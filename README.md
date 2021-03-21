@@ -1,9 +1,9 @@
-# MachineLearning_Exam (Grade: Danish scale 12; American scale: A)
+# MachineLearning_Exam (Grade: A; Top 11% of class)
 
 ## Components
-*-* The exam assignment can be found in *ECON_460202E004_Machine Learning for BI*
-*-* The data is avaiable in *audit2.csv*
-*-* My solution to the assignment can be found in *Exam.rmd*
+* The exam assignment can be found in *ECON_460202E004_Machine Learning for BI*
+* The data is avaiable in *audit2.csv*
+* My solution to the assignment can be found in *Exam.rmd*
 
 ## Tasks within exam 
 * Data exploration 

@@ -15,7 +15,7 @@
   * L1 Regularization
   * SuperLearner algoritm with Logistic regression and Elastic Net
 * Evaluating Model performance using:
-  * Accuracy
+  * Accuracy, Specificity, Sensitivity
   * AIC, BIC
   * AUC
 

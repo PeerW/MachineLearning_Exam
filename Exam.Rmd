@@ -322,8 +322,10 @@ Furthermore, I would expect the superlearner to give the majority of weight to t
 The logistic regression would probably have high variance and low biad, whereas, the enet would be able to reduce some of the variance by introducing bias through constraints. 
 
 
-**************Problem 2************
-#Question 1
+# **************Problem 2************
+
+# Question 1
+
 ## Load Data
 
 ```{r, warning=FALSE}

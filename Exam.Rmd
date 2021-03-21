@@ -1,0 +1,493 @@
+---
+title: "Exam - Machine Learning 1"
+author: "Peer Woyczechowski"
+date: "12/11/2020"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r, echo = F, include=FALSE} 
+# this chunck sets up the margins of the text in LAText document; might need to install formatR library previously
+library(knitr) 
+opts_chunk$set(tidy.opts=list(width.cutoff=80),tidy=TRUE)
+```
+
+
+```{r, echo = F,results=F, warning=F, message = F}
+#install.packages("e1071")
+library(dplyr)    
+library(ggplot2) 
+library(visdat)   
+library(caret)    
+library(recipes)  
+library(corrplot)
+library(magrittr)
+library(tidyverse)
+library(caret)
+library(Hmisc)
+library(class)
+library(caret)
+library(caTools)
+library(e1071)
+library(tables)
+library(haven)
+library(devtools)
+library(DataExplorer)
+library(AID)
+library(psych)
+library(rsample)
+library(questionr)
+library(formatR)
+library(dplyr)
+library(leaps)
+library(glmnet)
+library(reshape2)
+library(miscset)
+library(data.table)
+library(MAMI)
+library(SuperLearner)
+library(ggpubr)
+library(MASS)
+library(pca3d) 
+library(rJava)
+library(glmulti)
+```
+
+# Question 1
+
+## Load Data
+```{r, warning=FALSE}
+options("scipen"=999, "digits"=8)
+audit <- read.csv("/Users/peerwoyzcechowski/Desktop/Uni/BI/1.\ semester/Maschine\ Learning\ 1/7\ Applied\ Data\ Work/audit2.csv")
+
+audit[,c(3,6,7,9:11)] <- lapply(audit[,c(3,6,7,9:11)], as.factor) #specify categorical variables
+```
+
+## Standardize predictors
+```{r}
+audit <- audit %>% mutate_at(c("Sector_score", "PARA_A", "PARA_B", "TOTAL", "Money_Value"), ~ (scale(., center = T, scale = T) %>% as.vector)) 
+
+#checking mean=0 and sd=1
+x <- c("Sector_score", "PARA_A", "PARA_B", "TOTAL", "Money_Value")
+sapply(audit[x], sd)
+sapply(audit[x], mean)
+```
+
+## Split data in test and train
+```{r}
+# dim(audit)
+# train <- audit$Risk
+# audit_train <- audit[1:1162,]
+# audit_test  <- audit[1162:1550,]
+# dim(audit_train)
+# dim(audit_test)
+
+set.seed(123, "L'Ecuyer")
+(1162/1550)
+Training <- createDataPartition(audit$Risk, p = 0.75, list = FALSE)
+audit_train <- audit[ Training, ]
+audit_test  <- audit[-Training, ]
+dim(audit_train)
+
+# some factors have different levels in the training and validation data set, hence I'm deleting those
+uniquetrain1 <- unique(audit_train$History)
+test <- audit_test[audit_test$History %in% uniquetrain1,]
+```
+Somehow, when I partition my data by the first 1162 records later models are not working, thus, I used stratified data partinioning with 75% in the training set which is not exactly the same proportions. I end up with one more observation in the training set than specified in the exercise. I will continue with the stratified partitoned dataset. 
+
+## Share of Risk assigned observations in each data set
+```{r, echo = F}
+prop.table(table(audit_train$Risk))
+prop.table(table(audit_test$Risk))
+```
+The distribution of Risk in the training set is .57 for Risk=0 and .43 for Risk=1.
+The distribution of Risk in the test set is .53 for Risk=0 and .47 for Risk=1.
+
+# Question 2
+## Logistic regression
+```{r}
+## logistic regression
+glm2 <- glm(Risk ~. , data = audit_train, family = "binomial")
+
+
+## Predictions on train data
+glm_probs <- predict(glm2, newdata = audit_train , type = "response")
+
+## Predictions on test data
+glm_probs2 <- predict(glm2, newdata = audit_test , type = "response")
+
+
+## Confusion Matrix (train)
+confusionMatrix(factor(ifelse(glm_probs>0.5,"1","0")), #using 0.5 as cutoff level 
+                factor(audit_train$Risk), positive = "1") #defines the important category -- Risk=1
+
+## Confusion Matrix (test)
+confusionMatrix(factor(ifelse(glm_probs2>0.5,"1","0")), #using 0.5 as cutoff level 
+                factor(audit_test$Risk), positive = "1") #defines the important category -- Risk=1
+
+```
+Interpretation:
+We obtain a .75 accuracy for the prediction on the training data and a .74 accuracy for the predicition on the test data.
+It is expected that the accuracy on the training data prediction is higher since the model was trained on that data. However, one can observe that there is no big difference between the two accuracy values, indicating that we did not overfit the data during training. 
+
+# Question 3
+```{r}
+## logistic regression (interactions)
+# using train data
+glm3 <- glm(Risk ~.:. , data = audit_train, family = "binomial") #added twoway interact.
+summaryglm3 <- summary(glm3)
+
+#In-sample error
+ext.insample <- summaryglm3$deviance
+# the deviance in the logistic regression is equivalent to the in-sample error (log likelihood function)
+
+#AIC
+ext.aic <- summaryglm3$aic
+
+# BIC
+ext.bic <- BIC(glm3)
+
+## Logistic regression (no interactions)
+summaryglm2 <- summary(glm2)
+#In-sample error
+insample <- summaryglm2$deviance
+
+#AIC
+aic <- summaryglm2$aic
+
+# BIC
+bic <- BIC(glm2)
+
+##Compare
+cbind(insample, ext.insample)
+cbind(aic, ext.aic)
+cbind(bic, ext.bic)
+```
+Interpretaion:
+
+The first logistic regression outperforms the second model that includes interactions between all predictors in terms of all criteria: in-sample error, AIC, and BIC. 
+This is expected since by introducing the interaction terms, the problem at hand becomes more complex (i.e. higer dimensionality). A logistic regression's variance increases with increasing dimensionality. The model has high variance and low bias and thus overfits the data which results in a high in-sample error and much higher AIC and BIC values. Overall, the logistic regression in a high-dimensional problem often has low bias but high variance and since the expected in-sample error is a combination of these two quantities, we see higher values for the model with interactions.
+
+In terms of AIC and BIC, we can observe that the BIC is lower than the AIC for both models because BIC penalizes more regressors more than AIC does. Expectedly, in-sample error has the highest value since there is no penalization present.
+
+
+
+# Question 4
+
+I will use the Bayesian Model Averaging technique in the following question since the question asks if the chosen model is the true model 
+
+```{r}
+##BMA
+audit_train$Risk <- as.factor(audit_train$Risk)
+
+dim(audit_train)
+maBIC <- mami(audit_train, outcome = "Risk", model = "binomial", method = "MA.criterion", criterion ="BIC")
+
+maBIC$variable.importance
+maBIC$coefficients.ma
+
+```
+
+BMA is used to find the true model within a subset of models. If there is a true model, the BMA will pick the right model in the long-run (as sample size gets bigger and bigger or in theory if you would have an infinite sample). However, since we do not have an infinite sample at hand, we are only approximating the true model.
+Hence, for finite samples, the BMA will always combine different models and use some information from other models to stabilize the estimate i.e. smoothing the BICs for each model and approximating the true model. To sum up, the chosen model is probabily not the true model but just an approximation.
+
+
+The mami package gives variable importance measure that is averaged over the M imputed data sets.
+The measure sums up the weights w_k of those candidate models M_k that contain the relevant variable, and lies between 0 (unimportant) and 1 (very important). Looking at the variable importance, we observe that 
+the BMA model includes all variables, however, one can clearly see that Score_MV, District_Loss, Score_A, TOTAL, PARA_B and PARA_A are the most important variables compared to the rest of the variables. Hence, the BMA model gives the majority of weight to models that include the mentioned variables and less to the remaining variables.
+Especially, numbers and History seem to be less relevant in terms of finding the true model among a subset of models.
+
+
+# Question 5
+## extending data
+I will use a blueprint to create the squared predictors and two-way interactions.
+To create interactions between all the factor variables, I will create dummies before doing the interactions. 
+```{r}
+## 1. define recipe
+blueprint <- recipe(Risk ~ ., data = audit_train) %>%
+  step_poly(Sector_score,PARA_A,PARA_B,TOTAL,Money_Value 
+              ,degree = 2 #We want second order polynomial
+              ,options = list(raw = TRUE)
+              )%>% 
+  step_dummy(all_nominal(), -Risk, one_hot = T)%>% #needs to create dummies to do interactions between all predictors
+  step_interact(terms = ~ all_predictors():all_predictors())%>%
+  step_zv(all_predictors()) #trims the dummy variables that are interacted with each other
+
+
+## 2. prepare recipe
+prepare <- prep(blueprint, training = audit_train)
+prepare
+
+
+## 4. bake train data
+bake.train <- bake(prepare, new_data = audit_train)
+bake.test <- bake(prepare, new_data = audit_test)
+dim(bake.train)
+dim(bake.test)
+# Now, the dataset has 500 variables.
+```
+
+
+
+# L1 Regularization
+I chose to do L1 Regularization.
+I will select the optimal tuning parameter via 10-fold cross-validation. 
+```{r}
+##PREPARE
+glm.test <- glm(Risk ~ ., data = bake.test, family = "binomial")
+glm.train <- glm(Risk ~ ., data = bake.train, family = "binomial")
+
+x <-  model.matrix(glm.train)[,!is.na(glm.train$coefficients)][,-1]
+x_test <- model.matrix(glm.test)[,!is.na(glm.train$coefficients)][,-1]
+y <- bake.train$Risk
+y_test <- as.numeric(bake.test$Risk)
+l.grid <- 10^seq(3,-2,length=100) # setting up a grid of lambda
+
+
+##L1 cv.glmnet
+# using cv to determine the optimal lambda
+l1<- cv.glmnet(x,y,alpha=1,lambda = l.grid,nfolds = 10, family ="binomial", type.measure = "class")
+l1.lam <-  l1$lambda.min
+l1.lam
+
+##TEST
+# prediction (test)
+l1.pred <- predict(l1, s=l1.lam, newx = x_test)
+
+# performance (test)
+l1.predicted.classes <- ifelse(l1.pred > 0.5, "1", "0")
+l1.observed.classes <- bake.test$Risk
+acc.test <- mean(l1.predicted.classes == l1.observed.classes)
+
+##TRAIN
+# prediction (train)
+l1.pred.train <- predict(l1, s=l1.lam, newx = x) #x=train data
+
+# performance (train)
+l1.predicted.classes.train <- ifelse(l1.pred.train > 0.5, "1", "0")
+l1.observed.classes.train <- bake.train$Risk
+acc.train <- mean(l1.predicted.classes.train == l1.observed.classes.train)
+
+## Compare
+cbind(acc.test, acc.train)
+```
+The L1 Regularization approach for logisitc regression was used to yield a sparse solution.
+The optimal tuning parameter lambda=0.015922828 was picked thorugh 10 fold cross-validation. One can observe that a very low lambda was picked which drops some coefficients and shrinks others towards zero.
+
+The prediction accuracy on the test set is 0.711 and the prediction accuracy on the training set 0.715. It is expected that the training accuracy is higher than the test accuracy since the observations used for prediction are were used to train the model itself. Nevertheless, once can observe that there is only a small difference between the two, indicating that the model is not subject to overfit. 
+
+
+
+# Question 6
+
+I will use a logistic regression as a baseline model and an Elastic Net Model that should create constraints to the model to induce sparseness and result in a more stable model than logistic regression.
+```{r, eval=FALSE, results=FALSE, warning=FALSE}
+##NOTE: scale and center predictors and make dummies 
+listWrappers()
+## 1. Choose models
+# logistic regression
+# Elastic Net
+
+
+## 2. Preparation
+x_train.sl <- bake.train[,-1] #exclude Risk
+y_train.sl <- as.numeric(unlist(bake.train[,1]))
+
+## 3. Modeling 
+SL <- SuperLearner(Y=y_train.sl, X=x_train.sl, method = "method.NNloglik", family=binomial , SL.library = c("SL.glm", "SL.nnet"))
+SL
+
+# IF MY SUPERLEARNER WOULD BE FASTER, I WOULD HAVE PREDICTED AS BELOW
+## 4. Prediction
+#get model averaging weights and predicitions (In-Sample)
+SL$coef
+SL$SL.predict 
+
+sl.pred <- predict(SL, newdata = bake.test[,-1]) #exclude Risk
+as.numeric(sl.pred)
+sl.pred$pred
+
+## 5. Peformance
+sl.predicted.classes <- ifelse(sl.pred$pred > 0.5, "1", "0")
+sl.observed.classes <- bake.test$Risk
+sl.acc <- mean(sl.predicted.classes == sl.observed.classes)
+sl.acc
+```
+
+Somehow, my superlearner model takes a lot of time and my R crashed twice while trying to run the model.
+Therefore, I decided to simply show how I would have calcualted the test error if the model would have worked.
+Furthermore, I would expect the superlearner to give the majority of weight to the Elastic net since that would be assumingly more stable than the logistic regression.
+The logistic regression would probably have high variance and low biad, whereas, the enet would be able to reduce some of the variance by introducing bias through constraints. 
+
+
+**************Problem 2************
+#Question 1
+## Load Data
+
+```{r, warning=FALSE}
+options("scipen"=999, "digits"=8)
+audit.p2 <- read.csv("/Users/peerwoyzcechowski/Desktop/Uni/BI/1.\ semester/Maschine\ Learning\ 1/7\ Applied\ Data\ Work/audit2.csv")
+
+audit.p2[,c(3,6,7,9:12)] <- lapply(audit.p2[,c(3,6,7,9:12)], as.factor) #specify categorical variables
+```
+
+## Disretize
+```{r}
+##binning of numeric variables 
+audit.p2$Sector_score <- ifelse(audit.p2$Sector_score >= (median(audit.p2$Sector_score)),"High","Low" )
+audit.p2$PARA_A <- ifelse(audit.p2$PARA_A >= (median(audit.p2$PARA_A)),"High","Low" )
+audit.p2$PARA_B <- ifelse(audit.p2$PARA_B >= (median(audit.p2$PARA_B)),"High","Low" )
+audit.p2$TOTAL<- ifelse(audit.p2$TOTAL >= (median(audit.p2$TOTAL)),"High","Low" )
+audit.p2$Money_Value <- ifelse(audit.p2$Money_Value>= (median(audit.p2$Money_Value)),"High","Low" )
+
+#CHECK
+head(audit.p2)
+
+```
+
+# Question 2
+## data partioning
+```{r}
+dim(audit.p2)
+(1162/1550)
+
+set.seed(123, "L'Ecuyer")
+Training <- createDataPartition(audit.p2$Risk, p = 0.75, list = FALSE)
+p2.audit_train <- audit.p2[ Training, ]
+p2.audit_test  <- audit.p2[-Training, ]
+
+dim(p2.audit_test)
+dim(p2.audit_train)
+```
+
+## Naive bayes classifier
+```{r}
+audit.nb <- naiveBayes(Risk ~., data = p2.audit_train)
+
+#a-prior
+audit.nb$apriori
+
+#conditional probabilities
+audit.nb$tables
+
+
+#Performance eval
+pred.prob <- predict(audit.nb, newdata = p2.audit_test, type = "raw") #raw to get
+
+
+confusionMatrix(factor(ifelse(pred.prob[,2]>0.5,"1","0")), #using 0.5 as cutoff level 
+                factor(p2.audit_test$Risk), positive = "1") 
+
+Type1 <- 1-(0.77315) #specificity
+Type2 <- 1-(0.63529 ) #sensitivity
+Type1
+Type2
+#AUC
+colAUC(pred.prob, p2.audit_test$Risk, plotROC = T)
+```
+
+-- a-priori --
+The apriori output gives the class distribution for the dependent variable. The training set contains 651 Risk=0 observations and 513 Risk=1 observations.
+
+--conditional probabilities --
+The output gives a table for each attribute level which contain the conditional probabilities given the target class. 
+For example, for Money_value the conditional probability estimated for a firm being labeled "high" on money_value in the class Risk=1 is 0.66 while the probability for a firm being labeled as "High" on money value in the class Risk=0 is just 0.38. The conditional probailites are given for each predictor value for the two classes Risk=0 and Risk=1.
+
+--Evaluate the performance --
+The naive bayes model predicts with an accuracy of .71. The specificity of the model is .77 and specificity is .64.
+The area under the curve amounts to .79.
+
+In terms of Type-1 error (false-positive) we can calculate the 1-specificity which is 0.22685.
+The type-2 error are false-negatives, hence, we can calculate it by 1-sensitivity which is 0.36471.
+
+
+
+# Question 3
+
+The advantages of Naive Bayes over other more complex models are mainly its simplicity and computational efficiency. For example, it is much more efficient than predictions through regularization techniques that obtain optimal tuning parameters via cross-validation.
+
+Furthermore, NAive Bayes has the ability to handle categorical variables directly which is not possible for most other techniques. One would almost always have to create dummy variables before using a model or the model treats the categorical variables as dummies.
+Hence, Naive Bayes can handle both categorical and numerical data.
+
+Naive Bayes relies on the assumption of independence between predictor variables within each class, when this assumption is not violated, naive bayes often outperforms more sophisticated techniques. For example, if the independence assumption holds it will converge quicker than discriminative models like logistic regression. However, in this case, we cannot compare the tw models directly since we discretized variables in problem 2.
+Nevertheless, even when the underlying assumption of independent predictors is far from true (especially when there is a large amount of predictors), naive bayes sometimes still outperforms other classifiers.
+
+Naive Bayes is also less sensitive to irrelevant features.
+
+
+# Question 4
+Estimate the probability of fraud for a firm with a high risk score value of
+the target-unit from summary report A and a high risk score value of the target-unit from summary report B.1. Using the Naive Bayes model with all
+the predictors (point 2.).
+```{r}
+## P(Risk = 1 | Score_A= 0.6, Score_B1= 0.6).
+tables <- audit.nb$tables
+
+#P(Risk = 1) 
+priorRisk1 <- prop.table(audit.nb$apriori)
+risk1 <- priorRisk1[2]
+
+#P(PARA_A= High|Risk = 1)
+scoreA1_risk1 <- tables$Score_A[2,3]
+
+
+#P(PARA_B= High|Risk = 1)
+scoreB1_risk1 <- tables$Score_B.1[2,3]
+
+
+# P(PARA_A= High|Risk = 0)
+scoreA1_risk0 <- tables$Score_A[1,3]
+
+
+#P(PARA_B= High|Risk = 0)
+scoreB1_risk0 <- tables$Score_B.1[1,3]
+
+#P(Risk = 0)
+risk0 <- priorRisk1[1]
+
+
+## P(Risk = 1 | PARA_A = High, PARA_B= High).
+
+# naive bayes formula 
+# P(Risk = 1 | PARA_A = High, PARA_B= High) = 
+#P(Risk = 1) * P(PARA_A= High|Risk = 1) * P(PARA_B= High|Risk = 1) / 
+# P(Risk = 1) * [P(PARA_A= High|Risk = 1) * P(PARA_B = High | Risk = 1)] +
+#P(Risk = 0) *[P(PARA_A= High | Risk = 0) * P(PARA_B= High | Risk = 0)]
+
+nb.probability <- (risk1*(scoreA1_risk1*scoreB1_risk1)/((risk1*(scoreA1_risk1*scoreB1_risk1))+(risk0*(scoreA1_risk0*scoreB1_risk0))))
+nb.probability
+```
+The probability of fraud for a firm with a high risk score (0.6) from summary report A and a high risk score value of the target-unit from summary report B.1 (0.6) is 90% and thus extremely high.
+
+
+## Evaluate which combination of predictors and their corresponding values is associated with the highest probability of fraud. 
+
+I will use an empirical approach to determine the combination of predictors that are assoicated with the highest probability of fraud
+```{r, warning=F,}
+#p2.audit_train
+pred.train <- predict(audit.nb, newdata = p2.audit_train, type = "raw") #raw to get
+
+probabilities <- pred.train[,2]
+p2.audit_train$prob <-  probabilities #store probabilites in dataset
+
+
+audit_prob <- p2.audit_train[order(-p2.audit_train$prob),]  # minus indicate descending, hence highest prob first
+head(audit_prob,10) #get 5 highest probabilites for Risk=1
+
+```
+The highest probability of fraud are associated with:
+sector_score = Low
+PARA_A = High
+Score_A = 0.6
+PARA_B = High
+TOTAL = High
+numbers = 5.5 and 6 (higher end)
+Score_B1 = 0.6 and 0.4
+Money_Values = HIgh 
+Score_MV = 0.6
+District_Loss = 6 (4/5)
+History = 0 or 2 (low)
+Hence, one can conlclude that higher discrepancies found in the reports found, increase the proabbility of being fraudulent. Also having any higher risk score increases the probability of being fradulent. In contrast, it seems like that the historical loss suffered may not be that relevant since there are 3/5 0 loss suffered firms with extrmely high proability. Also, a lower sector_score i.e. historical risk score value of the target unit may increase the probaility of being fradulent. 
+
